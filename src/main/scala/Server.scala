@@ -18,21 +18,22 @@ object Server {
     implicit val materializer = ActorMaterializer()
 
     // chat room many clients -> merge hub -> broadcasthub -> many clients
-    val (chatSink, chatSource) =
+    val (sink, source) =
       MergeHub.source[String].toMat(BroadcastHub.sink[String])(Keep.both).run()
 
-    val userFlow: Flow[Message, Message, NotUsed] =
-      Flow[Message].mapAsync(1) {
+    val chatRoomFlow = Flow[Message].mapAsync(1) {
         // transform websocket message to domain message (string)
-        case TextMessage.Strict(text) =>       Future.successful(text)
+        case TextMessage.Strict(x) => Future.successful(x)
         case streamed: TextMessage.Streamed => streamed.textStream.runFold("")(_ ++ _)
-      }.via(Flow.fromSinkAndSource(chatSink, chatSource))
-       .map[Message](string => TextMessage(string))
+      }.via(Flow.fromSinkAndSource(sink, source))
+       .map[Message](x => TextMessage(x))
 
-    val route =
+    val echo = Flow[Message]
+
+    val route = 
       path("chat") {
         get {
-          handleWebSocketMessages(userFlow)
+          handleWebSocketMessages(chatRoomFlow)
         }
       }
 
